@@ -14,27 +14,8 @@ namespace ScreenMirror;
 public class MainActivity : Activity
 {
     const int RequestCodeCapture = 1000;
-    const int RequestCodePermissions = 1001;
     MediaProjectionManager? _projectionManager;
     bool _isScreenSharing = false;
-
-    // Required permissions
-    private string[] GetRequiredPermissions()
-    {
-        var permissions = new List<string>
-        {
-            Manifest.Permission.SystemAlertWindow,
-            Manifest.Permission.WakeLock
-        };
-
-        // Only add POST_NOTIFICATIONS for Android 13+ (API 33+)
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
-        {
-            permissions.Add(Manifest.Permission.PostNotifications);
-        }
-
-        return permissions.ToArray();
-    }
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -43,33 +24,7 @@ public class MainActivity : Activity
 
         _projectionManager = (MediaProjectionManager?)GetSystemService(MediaProjectionService);
 
-        // Check and request permissions first
-        if (!HasAllPermissions())
-        {
-            RequestPermissions();
-            return;
-        }
-
         InitializeUI();
-    }
-
-    private bool HasAllPermissions()
-    {
-        var requiredPermissions = GetRequiredPermissions();
-        foreach (var permission in requiredPermissions)
-        {
-            if (ContextCompat.CheckSelfPermission(this, permission) != Permission.Granted)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void RequestPermissions()
-    {
-        var requiredPermissions = GetRequiredPermissions();
-        ActivityCompat.RequestPermissions(this, requiredPermissions, RequestCodePermissions);
     }
 
     private void InitializeUI()
@@ -149,38 +104,6 @@ public class MainActivity : Activity
             {
                 txtStatus.Text = $"Error stopping screen sharing: {ex.Message}";
             }
-        }
-    }
-
-    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, Permission[] grantResults)
-    {
-        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode == RequestCodePermissions)
-        {
-            bool allPermissionsGranted = true;
-            for (int i = 0; i < grantResults.Length; i++)
-            {
-                if (grantResults[i] != Permission.Granted)
-                {
-                    allPermissionsGranted = false;
-                    break;
-                }
-            }
-
-            //if (allPermissionsGranted)
-            {
-                InitializeUI();
-            }
-            // else
-            // {
-            //     // Handle permission denial - show message to user
-            //     var txtStatus = FindViewById<TextView>(Resource.Id.txtStatus);
-            //     if (txtStatus != null)
-            //     {
-            //         txtStatus.Text = "Permissions required for screen mirroring";
-            //     }
-            // }
         }
     }
 
