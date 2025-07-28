@@ -10,7 +10,7 @@ using Android.Widget;
 
 namespace ScreenMirror;
 
-[Activity(Label = "@string/app_name", MainLauncher = true)]
+[Activity(Label = "@string/app_name")]
 public class MainActivity : Activity
 {
     const int RequestCodeCapture = 1000;
