@@ -7,6 +7,10 @@ using AndroidX.Core.App;
 using AndroidX.Core.Content;
 using System.Collections.Generic;
 using Android.Widget;
+using Java.Net;
+using System.Collections;
+using Android.Net.Wifi;
+using Android.Net;
 
 namespace ScreenMirror;
 
@@ -27,11 +31,63 @@ public class MainActivity : Activity
         InitializeUI();
     }
 
+    private string GetDeviceIPAddress()
+    {
+        try
+        {
+            // Simple approach: try to get IP from network interfaces
+            var interfaces = NetworkInterface.NetworkInterfaces;
+            if (interfaces != null)
+            {
+                while (interfaces.HasMoreElements)
+                {
+                    var networkInterface = interfaces.NextElement() as NetworkInterface;
+                    if (networkInterface != null && !networkInterface.IsLoopback && networkInterface.IsUp)
+                    {
+                        var addresses = networkInterface.InetAddresses;
+                        if (addresses != null)
+                        {
+                            while (addresses.HasMoreElements)
+                            {
+                                var address = addresses.NextElement() as InetAddress;
+                                if (address != null && !address.IsLoopbackAddress && address is Inet4Address)
+                                {
+                                    var hostAddress = address.HostAddress;
+                                    if (!string.IsNullOrEmpty(hostAddress))
+                                    {
+                                        Android.Util.Log.Info("MainActivity", $"Found IP address: {hostAddress}");
+                                        return hostAddress;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Error("MainActivity", $"Error getting IP address: {ex.Message}");
+        }
+        
+        Android.Util.Log.Warn("MainActivity", "Using fallback IP address");
+        return "192.168.1.13"; // Fallback to default
+    }
+
     private void InitializeUI()
     {
         var btnStart = FindViewById<Button>(Resource.Id.btnStartCapture);
         var btnStop = FindViewById<Button>(Resource.Id.btnStopCapture);
         var txtStatus = FindViewById<TextView>(Resource.Id.txtStatus);
+
+        // Auto-detect and set the device's IP address
+        var ipAddressField = FindViewById<EditText>(Resource.Id.editTxtIpAddress);
+        if (ipAddressField != null)
+        {
+            string detectedIp = GetDeviceIPAddress();
+            ipAddressField.Text = detectedIp;
+            Android.Util.Log.Info("MainActivity", $"Set IP address field to: {detectedIp}");
+        }
 
         UpdateUIState();
 

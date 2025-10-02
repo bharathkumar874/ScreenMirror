@@ -93,9 +93,26 @@ public class ScreenCaptureService : Service
         _imageReader.SetOnImageAvailableListener(new ImageAvailableListener(SendFrame), _handler);
 
         var wsUrl = "ws://" + ipAddress + ":" + port;
+        Log.Info("ScreenCaptureService", $"Connecting to WebSocket: {wsUrl}");
         _webSocket = new WebSocket(wsUrl);
+        
+        _webSocket.OnOpen += (sender, e) => 
+        {
+            Log.Info("ScreenCaptureService", "WebSocket connection opened successfully");
+        };
+        
+        _webSocket.OnError += (sender, e) => 
+        {
+            Log.Error("ScreenCaptureService", $"WebSocket error: {e.Message}");
+        };
+        
+        _webSocket.OnClose += (sender, e) => 
+        {
+            Log.Info("ScreenCaptureService", $"WebSocket closed: {e.Code} - {e.Reason}");
+        };
+        
         _webSocket.Connect();
-        _webSocket.Send("Hello from ScreenCaptureService");
+        _webSocket.Send("Hello from ScreenCaptureService - IP: " + ipAddress + ", Port: " + port);
 
         return StartCommandResult.Sticky;
     }
@@ -192,10 +209,18 @@ public class ScreenCaptureService : Service
             bitmap.CopyPixelsFromBuffer(buffer);
 
             using var ms = new MemoryStream();
-            bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 50, ms);
+            bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 30, ms);
             byte[] jpegData = ms.ToArray();
 
-            _webSocket?.Send(jpegData);
+            if (_webSocket?.ReadyState == WebSocketState.Open)
+            {
+                _webSocket.Send(jpegData);
+                Log.Debug("ScreenCaptureService", $"Sent frame: {jpegData.Length} bytes, {image.Width}x{image.Height}");
+            }
+            else
+            {
+                Log.Warn("ScreenCaptureService", $"WebSocket not ready: {_webSocket?.ReadyState}");
+            }
         }
         catch (Exception ex)
         {
