@@ -42,6 +42,9 @@ public class ScreenCaptureService : Service
     {
         int resultCode = intent!.GetIntExtra("resultCode", 0);
         Intent data = (Intent)intent.GetParcelableExtra("data")!;
+        string? ipAddress = intent.GetStringExtra("ipAddress");
+        string? port = intent.GetStringExtra("port");
+
         var projectionManager = (MediaProjectionManager)GetSystemService(MediaProjectionService)!;
 
         _mediaProjection = projectionManager.GetMediaProjection(resultCode, data);
@@ -89,9 +92,7 @@ public class ScreenCaptureService : Service
 
         _imageReader.SetOnImageAvailableListener(new ImageAvailableListener(SendFrame), _handler);
 
-
-        var ipAddress = "192.168.1.16";//"192.168.101.213"; ;
-        var wsUrl = "ws://" + ipAddress + ":8765";
+        var wsUrl = "ws://" + ipAddress + ":" + port;
         _webSocket = new WebSocket(wsUrl);
         _webSocket.Connect();
         _webSocket.Send("Hello from ScreenCaptureService");

@@ -113,9 +113,20 @@ public class MainActivity : Activity
 
         if (requestCode == RequestCodeCapture && resultCode == Result.Ok && data != null)
         {
+            var ipAddress = FindViewById<EditText>(Resource.Id.editTxtIpAddress)?.Text;
+            var port = FindViewById<EditText>(Resource.Id.editTxtPort)?.Text;
+
+            if (string.IsNullOrEmpty(ipAddress) || string.IsNullOrEmpty(port))
+            {
+                Toast.MakeText(this, "IP address and port cannot be empty", ToastLength.Short)?.Show();
+                return;
+            }
+
             Intent serviceIntent = new Intent(this, typeof(ScreenCaptureService));
             serviceIntent.PutExtra("resultCode", (int)resultCode);
             serviceIntent.PutExtra("data", data);
+            serviceIntent.PutExtra("ipAddress", ipAddress);
+            serviceIntent.PutExtra("port", port);
 
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                 StartForegroundService(serviceIntent);
