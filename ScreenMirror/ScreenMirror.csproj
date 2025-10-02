@@ -19,6 +19,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WebSocketSharp-netstandard" Version="1.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.CardView" Version="1.0.0" />
     <PackageReference Include="Xamarin.AndroidX.Core" Version="1.0.2" />
     <PackageReference Include="Xamarin.AndroidX.Media" Version="1.0.1" />
   </ItemGroup>

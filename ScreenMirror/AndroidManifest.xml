@@ -21,7 +21,8 @@
     <activity android:name="screenmirror.MainActivity"
               android:exported="true"
               android:configChanges="orientation|screenSize"
-              android:launchMode="singleTop">
+              android:launchMode="singleTop"
+              android:theme="@android:style/Theme.Light.NoTitleBar">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />

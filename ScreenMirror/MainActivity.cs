@@ -71,6 +71,7 @@ public class MainActivity : Activity
         if (btnStop != null)
         {
             btnStop.Enabled = _isScreenSharing;
+            btnStop.Visibility = _isScreenSharing ? Android.Views.ViewStates.Visible : Android.Views.ViewStates.Gone;
         }
 
         if (txtStatus != null)
