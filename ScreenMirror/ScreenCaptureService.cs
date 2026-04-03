@@ -13,6 +13,7 @@ using Java.Net;
 using Java.Util;
 using Android.Net.Wifi;
 using Android.Net;
+using System.Threading.Tasks;
 
 namespace ScreenMirror;
 
@@ -49,39 +50,40 @@ public class ScreenCaptureService : Service
 
         _mediaProjection = projectionManager.GetMediaProjection(resultCode, data);
 
-        // Register callback before starting capture (required for resource management)
-        var callback = new MediaProjectionCallback();
-        _mediaProjection.RegisterCallback(callback, _handler);
-
+        // Initialize handler thread FIRST before registering callback
         _handlerThread = new HandlerThread("ImageReaderThread");
         _handlerThread.Start();
         _handler = new Handler(_handlerThread.Looper!);
+
+        // Now register callback with properly initialized handler
+        var callback = new MediaProjectionCallback();
+        _mediaProjection.RegisterCallback(callback, _handler);
 
         int width = Resources?.DisplayMetrics?.WidthPixels ?? 1080;
         int height = Resources?.DisplayMetrics?.HeightPixels ?? 1920;
         int dpi = (int)(Resources?.DisplayMetrics?.DensityDpi ?? DisplayMetricsDensity.Default);
 
-        // Use compatible image format - MediaProjection typically produces RGBA_8888
+        // Use compatible image format - Start with most compatible RGBA_8888
         try
         {
-            // First try FlexRgb888 for newer devices (API 23+)
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
-            {
-                _imageReader = ImageReader.NewInstance(width, height, ImageFormatType.FlexRgb888, 2);
-                Log.Info("ScreenCaptureService", "Using FlexRgb888 format");
-            }
-            else
-            {
-                // For older devices, use RGBA_8888 (Android ImageFormat constant = 1)
-                _imageReader = ImageReader.NewInstance(width, height, (ImageFormatType)1, 2);
-                Log.Info("ScreenCaptureService", "Using RGBA_8888 format for compatibility");
-            }
+            // Use RGBA_8888 (ImageFormat constant = 1) which is most universally supported
+            _imageReader = ImageReader.NewInstance(width, height, (ImageFormatType)1, 2);
+            Log.Info("ScreenCaptureService", "Using RGBA_8888 format for maximum compatibility");
         }
         catch (Exception ex)
         {
-            // Ultimate fallback - use RGBA_8888 (Android ImageFormat constant = 1)
-            Log.Warn("ScreenCaptureService", $"Preferred format failed, using RGBA_8888 fallback: {ex.Message}");
-            _imageReader = ImageReader.NewInstance(width, height, (ImageFormatType)1, 2);
+            // If even RGBA_8888 fails, try RGB_565 as last resort
+            Log.Warn("ScreenCaptureService", $"RGBA_8888 failed, trying RGB_565: {ex.Message}");
+            try
+            {
+                _imageReader = ImageReader.NewInstance(width, height, (ImageFormatType)4, 2); // RGB_565
+                Log.Info("ScreenCaptureService", "Using RGB_565 format as fallback");
+            }
+            catch (Exception ex2)
+            {
+                Log.Error("ScreenCaptureService", $"All image formats failed: {ex2.Message}");
+                throw;
+            }
         }
         _virtualDisplay = _mediaProjection.CreateVirtualDisplay(
             "ScreenCapture",
@@ -92,12 +94,130 @@ public class ScreenCaptureService : Service
 
         _imageReader.SetOnImageAvailableListener(new ImageAvailableListener(SendFrame), _handler);
 
-        var wsUrl = "ws://" + ipAddress + ":" + port;
-        _webSocket = new WebSocket(wsUrl);
-        _webSocket.Connect();
-        _webSocket.Send("Hello from ScreenCaptureService");
+        // Initialize WebSocket connection with better error handling
+        InitializeWebSocketConnection();
 
         return StartCommandResult.Sticky;
+    }
+
+    private void InitializeWebSocketConnection()
+    {
+        var wsUrl = "wss://screen-mirror-web.onrender.com";
+        Log.Info("ScreenCaptureService", $"Connecting to WebSocket: {wsUrl}");
+
+        try
+        {
+            _webSocket = new WebSocket(wsUrl);
+
+            // Set connection timeout
+            _webSocket.WaitTime = TimeSpan.FromSeconds(10);
+
+            // Configure SSL settings for testing (bypass certificate validation)
+            _webSocket.SslConfiguration.ServerCertificateValidationCallback =
+                (sender, certificate, chain, sslPolicyErrors) =>
+                {
+                    Log.Info("ScreenCaptureService", $"SSL Certificate validation: {sslPolicyErrors}");
+                    return true; // Accept all certificates for testing
+                };
+
+            // Set additional connection parameters
+            _webSocket.Origin = "https://screen-mirror-web.onrender.com";
+            _webSocket.EmitOnPing = true;
+
+            _webSocket.OnOpen += (sender, e) =>
+            {
+                Log.Info("ScreenCaptureService", "✅ WebSocket connection opened successfully");
+                _webSocket.Send("Hello from ScreenCaptureService - Connection established");
+            };
+
+            _webSocket.OnError += (sender, e) =>
+            {
+                Log.Error("ScreenCaptureService", $"❌ WebSocket error: {e.Message}");
+                Log.Error("ScreenCaptureService", $"Error details: Exception={e.Exception?.GetType().Name}, InnerException={e.Exception?.InnerException?.Message}");
+            };
+
+            _webSocket.OnClose += (sender, e) =>
+            {
+                Log.Warn("ScreenCaptureService", $"🔌 WebSocket closed: Code={e.Code}, Reason='{e.Reason}', WasClean={e.WasClean}");
+
+                // Attempt to reconnect if connection was not closed cleanly
+                if (!e.WasClean && e.Code != 1000)
+                {
+                    Log.Info("ScreenCaptureService", "Attempting to reconnect WebSocket...");
+                    Task.Delay(3000).ContinueWith(_ =>
+                    {
+                        try
+                        {
+                            if (_webSocket?.ReadyState == WebSocketState.Closed)
+                            {
+                                _webSocket.Connect();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Error("ScreenCaptureService", $"Reconnection failed: {ex.Message}");
+                        }
+                    });
+                }
+            };
+
+            // Attempt connection with error handling
+            Log.Info("ScreenCaptureService", "Attempting WebSocket connection...");
+            _webSocket.Connect();
+
+            // Give it a moment to establish connection
+            Task.Delay(2000).ContinueWith(_ =>
+            {
+                if (_webSocket?.ReadyState != WebSocketState.Open)
+                {
+                    Log.Warn("ScreenCaptureService", $"WebSocket not opened after 2s, state: {_webSocket?.ReadyState}");
+                    // Try fallback connection method
+                    TryFallbackConnection();
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error("ScreenCaptureService", $"Failed to initialize WebSocket: {ex.Message}");
+            Log.Error("ScreenCaptureService", $"Stack trace: {ex.StackTrace}");
+            TryFallbackConnection();
+        }
+    }
+
+    private void TryFallbackConnection()
+    {
+        Log.Info("ScreenCaptureService", "Trying fallback connection methods...");
+
+        try
+        {
+            // Try with different URL or protocol
+            var fallbackUrl = "wss://screen-mirror-web.onrender.com"; // Try non-secure first
+            Log.Info("ScreenCaptureService", $"Trying fallback URL: {fallbackUrl}");
+
+            _webSocket = new WebSocket(fallbackUrl);
+            _webSocket.WaitTime = TimeSpan.FromSeconds(5);
+
+            _webSocket.OnOpen += (sender, e) =>
+            {
+                Log.Info("ScreenCaptureService", "✅ Fallback WebSocket connection opened successfully");
+            };
+
+            _webSocket.OnError += (sender, e) =>
+            {
+                Log.Error("ScreenCaptureService", $"❌ Fallback WebSocket error: {e.Message}");
+            };
+
+            _webSocket.OnClose += (sender, e) =>
+            {
+                Log.Warn("ScreenCaptureService", $"🔌 Fallback WebSocket closed: Code={e.Code}, Reason='{e.Reason}'");
+            };
+
+            _webSocket.Connect();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("ScreenCaptureService", $"Fallback connection also failed: {ex.Message}");
+        }
     }
 
     private void CreateNotification()
@@ -192,10 +312,18 @@ public class ScreenCaptureService : Service
             bitmap.CopyPixelsFromBuffer(buffer);
 
             using var ms = new MemoryStream();
-            bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 50, ms);
+            bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 30, ms);
             byte[] jpegData = ms.ToArray();
 
-            _webSocket?.Send(jpegData);
+            if (_webSocket?.ReadyState == WebSocketState.Open)
+            {
+                _webSocket.Send(jpegData);
+                Log.Debug("ScreenCaptureService", $"Sent frame to remote server: {jpegData.Length} bytes, {image.Width}x{image.Height}");
+            }
+            else
+            {
+                Log.Warn("ScreenCaptureService", $"WebSocket not ready for remote server: {_webSocket?.ReadyState}");
+            }
         }
         catch (Exception ex)
         {
