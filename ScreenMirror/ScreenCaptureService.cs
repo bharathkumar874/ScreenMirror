@@ -192,7 +192,7 @@ public class ScreenCaptureService : Service
             bitmap.CopyPixelsFromBuffer(buffer);
 
             using var ms = new MemoryStream();
-            bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 50, ms);
+            bitmap.Compress(Bitmap.CompressFormat.Jpeg!, 40, ms);
             byte[] jpegData = ms.ToArray();
 
             _webSocket?.Send(jpegData);

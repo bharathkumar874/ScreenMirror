@@ -10,7 +10,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
 
-  <application android:allowBackup="true" android:icon="@mipmap/appicon" android:label="@string/app_name" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true">
+  <application android:allowBackup="true" android:icon="@drawable/screenmirror" android:label="@string/app_name" android:supportsRtl="true">
     
     <service
         android:name="screenmirror.ScreenCaptureService"
